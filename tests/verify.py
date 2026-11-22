@@ -75,6 +75,43 @@ def unit() -> None:
     check("면적 자동(59 주력)", M.auto_band([{"전용㎡": 59.9, "세대수": 190}, {"전용㎡": 84.9, "세대수": 50}])[:2] == (57, 64))
     check("면적 자동(84A+84B 합산)", M.auto_band([{"전용㎡": 84.9, "세대수": 60}, {"전용㎡": 84.8, "세대수": 60},
                                             {"전용㎡": 59.9, "세대수": 100}])[:2] == (80, 86))
+    check("면적 자동(비주력 74 → 84 우선)", M.auto_band([{"전용㎡": 74.9, "세대수": 300}, {"전용㎡": 84.9, "세대수": 80}])[:2] == (80, 86))
+    check("면적 자동(대형만 → 주력±3.5)", M.auto_band([{"전용㎡": 101.9, "세대수": 300}, {"전용㎡": 125, "세대수": 80}])[:2] == (98, 106))
+    pl = {"sido": "대구광역시", "sgg": "수성구", "dong": "범어동"}
+    check("분양 매칭: 같은 시군구만", M._same_place("대구광역시 수성구 범어동 123", pl) and not M._same_place("대구광역시 달서구 본동 1", pl))
+    w = M._region_words(pl)
+    check("분양 매칭: 공고 꼬리말 제거", M._core_name("힐스테이트범어센트럴(임의공급)", w) == M._core_name("힐스테이트 범어센트럴", w))
+    # 시세 추정 사다리(합성 자료)
+    sp = 84.9 * 1.32 / M.PY
+    e = M.estimate_target({"단지명": "x"}, [], {"시세": {"매매": {"㎡당(만원)": 500.0, "단지수": 4, "기간": "최근 12개월", "구분": "전체"}}},
+                          sp, 84.9)
+    check("추정: 비교사례 없음 → 시군구 매매 시세", e.get("매매", {}).get("추정가(만원)") == round(500 * 84.9))
+    cands = [{"매매공급평단가": 1000, "전세공급평단가": 650}, {"매매공급평단가": 1100}]
+    e = M.estimate_target({"단지명": "x", "매매가": 30000, "가격구분": "예정 매각가"}, cands, {}, sp, 84.9)
+    check("추정: 전세가율 없음 → 비교단지 자체 비율", abs(e.get("전세", {}).get("추정가(만원)", 0) - 19500) <= 1
+          and "자체" in e["전세"]["방법"])
+    e = M.estimate_target({"단지명": "x", "매매가": 30000, "가격구분": "예정 매각가"}, [],
+                          {"전평형": {"전세가율": 0.6, "기간": "최근 24개월", "단지수": 5, "구분": "전 평형"}}, sp, 84.9)
+    check("추정: 같은 면적 비율 없음 → 전 평형 비율", e.get("전세", {}).get("추정가(만원)") == 18000)
+    e = M.estimate_target({"단지명": "x"}, [], {"시세": {"전세": {"㎡당(만원)": 300.0, "단지수": 3, "기간": "최근 36개월", "구분": "전체"}}},
+                          sp, 84.9)
+    check("추정: 매매 기준 없음 → 시군구 전세 시세", e.get("전세", {}).get("추정가(만원)") == round(300 * 84.9))
+    check("추정: 자료 전무 → 빈 값(오류 없음)", M.estimate_target({"단지명": "x"}, [], {}, sp, 84.9) == {})
+    rows = ([{"aptSeq": f"A{i}", "excluUseAr": "84.9", "dealAmount": f"{30000 + i * 1000:,}", "buildYear": "2020",
+              "dealYear": "2026", "dealMonth": "10", "dealDay": "1"} for i in range(4)], [])
+    d = M.district_price(rows, 80, 86, "202611", 2021)
+    check("시군구 시세(단지별 중위)", d.get("매매", {}).get("단지수") == 4 and d["매매"]["구분"].startswith("준공 2014"))
+    old = ([{"aptSeq": f"B{i}", "excluUseAr": "59.9", "dealAmount": "6,000", "buildYear": "1995", "dealYear": "2026", "dealMonth": "10", "dealDay": "1"} for i in range(9)], [])
+    check("시군구 시세: 구축만 있으면 쓰지 않음", M.district_price(old, 57, 64, "202611", 2027) == {})
+    check("주소: K-apt 압축 시군구 펼침", M.split_address("경기도 안양동안구 호계동 1296")["sgg"] == "안양시 동안구"
+          and M.split_address("경상남도 창원마산회원구 양덕동 1")["sgg"] == "창원시 마산회원구"
+          and M.split_address("부산광역시 부산진구 가야동 1")["sgg"] == "부산진구")
+    check("KOSIS 시군구: 창원마산회원구 → 창원시", M.kosis_sgg_name("창원마산회원구", "경남") == "창원시")
+    w = M._region_words({"sido": "인천광역시", "sgg": "검단구", "umd": "왕길동"})
+    check("분양 매칭: 역 이름은 지명으로 떼지 않음", M._core_name("왕길역 로열파크씨티 푸르지오", w) == "왕길역로열파크씨티푸르지오")
+    check("주소 정리: K-apt 꼬리·압축 시군구", M.clean_addr("경상북도 울진군 울진읍 읍남리 503- 울진역센트럴두산위브") == "경상북도 울진군 울진읍 읍남리 503"
+          and M.clean_addr("경기도 안양동안구 호계동 1296 평촌어바인퍼스트") == "경기도 안양시 동안구 호계동 1296")
+    check("주택형 요약(타입 많음)", len(M.types_text({59: 70, 74: 132, 84: 138, 91: 6, 94: 6, 100: 2, 115: 34})) < 70)
     check("이름 정리(병원)", M.clean_org("의료법인한국의료재단순천한국병원") == "순천한국병원")
     check("이름 정리(마트)", M.clean_shop("롯데쇼핑롯데슈퍼범서점주") == "롯데슈퍼범서점")
     check("역 이름 같음", M._station_key("굽은다리역(강동구민회관앞)") == M._station_key("굽은다리(강동구민회관앞)역"))
@@ -157,7 +194,25 @@ def check_output(name: str, r: dict, n_slides: int | None = None) -> None:
         check(f"[{name}] OOXML 검증", "passed" in (v.stdout + v.stderr).lower() or v.returncode == 0, (v.stdout + v.stderr)[-200:])
 
 
+async def presale_cases() -> None:
+    """청약홈 실조회: 비슷한 이름·행정구역 개편·압축 주소."""
+    cases = [("왕길역 로열파크씨티 푸르지오", "인천광역시 검단구 왕길동 133-3", "왕길역 로열파크씨티 푸르지오"),
+             ("평촌 어바인퍼스트", "경기도 안양동안구 호계동 1296", "평촌 어바인퍼스트"),
+             ("서귀포 형남아파트6차", "제주특별자치도 서귀포시 서홍동 384-5", "형남아파트6차"),
+             ("엘리프세종6-3", "세종특별자치시 산울동 1", "엘리프세종6-3")]
+    for asset, addr, expect in cases:
+        pl = M.split_address(addr)
+        try:
+            r = await M.presale_info(asset, 84.9, pl["sgg"].split()[0] if pl["sgg"] else "", pl)
+        except Exception as e:
+            r = None
+            print("   ", asset, e)
+        got = (r or {}).get("주택명") or ""
+        check(f"[분양매칭] {asset}", expect.replace(" ", "") in got.replace(" ", ""), got)
+
+
 async def scenarios() -> None:
+    await presale_cases()
     OUT.mkdir(parents=True, exist_ok=True)
     # 2) 기준값: 칠곡 IM
     r = await scenario("기준_칠곡", target_unsold_units=310, target_sale_price=28100, target_jeonse=14100, target_area=84.89)
@@ -206,6 +261,7 @@ async def scenarios() -> None:
     r = await scenario("비교단지없음", prep=empty_ring)
     if r:
         check("[비교단지없음] 반경 확대 시도·안내", any("넓혔" in w for w in r["경고"]) or r.get("최종반경km") == 1.5)
+        check("[비교단지없음] 부족 안내", len(r["비교단지"]) >= 3 or any("comparable_names" in w for w in r["경고"]))
         check("[비교단지없음] 보고서는 생성", bool(r.get("PPT")))
         check_output("비교단지없음", r)
 

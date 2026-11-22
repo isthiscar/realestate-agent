@@ -221,19 +221,37 @@ def _strip_table_style(tbl_shape) -> None:
     style.text = "{5940675A-B579-460E-94D1-54222C63F5DA}"  # No Style, Table Grid
 
 
-def kv_table(slide, x, y, w, rows: list[tuple[str, str]], col1=Cm(2.8), row_h=Cm(0.86), size=10):
-    shape = slide.shapes.add_table(len(rows) + 1, 2, x, y, w, row_h * (len(rows) + 1))
+def _text_units(s: str) -> float:
+    """한글·전각 1, 영숫자·기호 0.55로 센 글자 폭."""
+    return sum(1.0 if ord(ch) > 0x2E80 else 0.55 for ch in s or "")
+
+
+def kv_table(slide, x, y, w, rows: list[tuple[str, str]], col1=Cm(2.8), row_h=Cm(0.86), size=10, max_h=None):
+    """2열 표. 긴 값은 줄 수를 세어 행 높이를 늘리고, 전체가 max_h를 넘으면 글자를 8pt까지 줄임."""
+    n = len(rows) + 1
+    usable_pt = (w - col1) / 12700 - 14.4  # 셀 좌우 여백
+    heights, fsize = [row_h] * n, size
+    for fs in [size - 0.5 * i for i in range(int((size - 8) / 0.5) + 1)]:
+        cap = max(8.0, usable_pt / fs)
+        hs = [row_h] + [row_h + int(max(0, math.ceil(_text_units(str(v)) / cap) - 1) * Pt(fs * 1.3)) for _, v in rows]
+        heights, fsize = hs, fs
+        if not max_h or sum(hs) <= max_h:
+            break
+    if max_h and sum(heights) > max_h:  # 그래도 넘치면 기본 높이를 비율로 줄임
+        k = max_h / sum(heights)
+        heights = [int(h * k) for h in heights]
+    shape = slide.shapes.add_table(n, 2, x, y, w, sum(heights))
     _strip_table_style(shape)
     t = shape.table
     t.columns[0].width = col1
     t.columns[1].width = w - col1
-    _cell_text(t.cell(0, 0), "구분", size, True, TXT, fill=HEAD_FILL)
-    _cell_text(t.cell(0, 1), "내용", size, True, TXT, fill=HEAD_FILL)
+    _cell_text(t.cell(0, 0), "구분", fsize, True, TXT, fill=HEAD_FILL)
+    _cell_text(t.cell(0, 1), "내용", fsize, True, TXT, fill=HEAD_FILL)
     for i, (k, v) in enumerate(rows, 1):
-        _cell_text(t.cell(i, 0), k, size, True, TXT, fill=RGBColor(0xF2, 0xF4, 0xF8))
-        _cell_text(t.cell(i, 1), v, size, False, TXT)
-    for r in range(len(rows) + 1):
-        t.rows[r].height = row_h
+        _cell_text(t.cell(i, 0), k, fsize, True, TXT, fill=RGBColor(0xF2, 0xF4, 0xF8))
+        _cell_text(t.cell(i, 1), v, fsize, False, TXT)
+    for r in range(n):
+        t.rows[r].height = heights[r]
         for c in range(2):
             _cell_border(t.cell(r, c), "LRTB", "7F7F7F", 0.5)
     return shape
@@ -825,7 +843,8 @@ def build_pptx(data: dict, out_path: Path, brand: str = "JB Asset Management") -
         bullets(s, ov["bullets"], h=Cm(1.6))
         section_label(s, Cm(2.04), Cm(5.45), "자산개요")
         rows = ov["rows"]
-        kv_table(s, Cm(2.04), Cm(6.15), Cm(12.9), rows, col1=Cm(2.8), row_h=Cm(min(0.86, 12.6 / (len(rows) + 1))))
+        kv_table(s, Cm(2.04), Cm(6.15), Cm(12.9), rows, col1=Cm(2.8), row_h=Cm(min(0.86, 12.6 / (len(rows) + 1))),
+                 max_h=Cm(12.6))
         section_label(s, Cm(15.25), Cm(5.45), ov.get("img1_title", "항공사진"))
         _pic(s, ov.get("img1"), Cm(15.25), Cm(6.15), Cm(11.85), Cm(6.3))
         section_label(s, Cm(15.25), Cm(12.85), ov.get("img2_title", "위치도"))
