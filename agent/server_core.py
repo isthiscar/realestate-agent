@@ -2181,7 +2181,7 @@ def _job_result(jid: str, job: dict) -> dict:
     if _UPD.get("note"):
         out["업데이트"] = _UPD["note"]
     if job.get("compact"):
-        keys = ("자산명", "PPT", "PDF", "슬라이드", "경고", "진단")
+        keys = ("자산명", "PPT", "PDF", "슬라이드", "경고", "진단", "시세추정", "최종반경km", "비교면적")
         out.update({k: res.get(k) for k in keys})
         cx = res.get("비교단지") or []
         out["요약"] = {
