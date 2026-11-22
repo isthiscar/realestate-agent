@@ -84,13 +84,16 @@ def unit() -> None:
     check("광역표 상한(교통 4·산업 1)", sum(r["구분"] == "교통" for r in capped) == 4 and sum(r["구분"] == "산업" for r in capped) == 1
           and any(r["구분"] == "행정" for r in capped))
     check("연도 2자리", (M.full_year("98"), M.full_year("16")) == (1998, 2016))
-    tr = [{"excluUseAr": "84", "dealAmount": "30,000", "dealYear": "2026", "dealMonth": "9", "dealDay": "1", "buildYear": "2020"}] * 6
-    rt = [{"excluUseAr": "84", "deposit": "21,000", "monthlyRent": "0", "dealYear": "2026", "dealMonth": "9", "dealDay": "2",
-           "buildYear": "2019"}] * 6
+    tr = [{"aptSeq": f"A{i % 3}", "excluUseAr": "84", "dealAmount": "30,000", "dealYear": "2026", "dealMonth": "9", "dealDay": "1",
+           "buildYear": "2020"} for i in range(6)]
+    rt = [{"aptSeq": f"A{i % 3}", "excluUseAr": "84", "deposit": "21,000", "monthlyRent": "0", "dealYear": "2026", "dealMonth": "9",
+           "dealDay": "2", "buildYear": "2019"} for i in range(6)]
+    rt += [{"aptSeq": "임대", "excluUseAr": "84", "deposit": "3,000", "monthlyRent": "0", "dealYear": "2026", "dealMonth": "9",
+            "dealDay": "2", "buildYear": "2019"}] * 20  # 매매 없는 임대단지는 빠져야 함
     r = M.district_ratio((tr, rt), 80, 86, "202611", 2022)
     check("시군구 전세가율", r.get("신축", {}).get("전세가율") == 0.7, json.dumps(r, ensure_ascii=False))
     tgt = {"매매가": 28100, "가격구분": "예정 매각가"}
-    e = M.estimate_target(tgt, [], {"전체": {"전세가율": 0.6, "구분": "전체", "기간": "최근 12개월", "전세표본": 30}}, 33.5)
+    e = M.estimate_target(tgt, [], {"전체": {"전세가율": 0.6, "구분": "전체", "기간": "최근 12개월", "전세표본": 30, "단지수": 9}}, 33.5)
     check("전세 추정(사례 없음 → 전세가율)", e.get("전세", {}).get("추정가(만원)") == 16860, json.dumps(e, ensure_ascii=False))
     e2 = M.estimate_target({}, [{"전세공급평단가": 400}, {"전세공급평단가": 420}, {"매매공급평단가": 800}, {"매매공급평단가": 840}],
                            {}, 33.5)

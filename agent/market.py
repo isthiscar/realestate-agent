@@ -932,15 +932,21 @@ def _dedupe_raw(items: list[dict], kind: str) -> list[dict]:
 
 def district_ratio(rows: tuple[list, list], area_min: float, area_max: float, end: str,
                    target_year: int | None = None) -> dict:
-    """시군구 전체 실거래로 본 전세가율(전세 보증금/매매가, ㎡당 중위값 기준). 신축(본 건 준공 ±7년) 따로."""
+    """시군구 전세가율 = 단지별(같은 단지 안) 전세 ㎡당가 ÷ 매매 ㎡당가 의 중위값.
+    단지를 섞어 평균내면 '전세는 신축, 매매는 구축'처럼 구성이 달라 왜곡되므로 같은 단지 안에서 비교.
+    매매가 없는 임대 단지는 자연히 빠짐. 신축(본 건 준공 ±7년) 따로."""
     trades, rents = rows
 
     def band(it):
         a = S.num(it.get("excluUseAr"))
         return a is not None and area_min <= a <= area_max
 
+    def key(it):
+        return it.get("aptSeq") or f"{it.get('umdNm')}|{it.get('aptNm')}"
+
     def calc(months_back: int, cohort: bool):
         lo = ym_add(end, -(months_back - 1))
+
         def ok(it):
             if not band(it) or _date(it).replace("-", "")[:6] < lo:
                 return False
@@ -948,17 +954,29 @@ def district_ratio(rows: tuple[list, list], area_min: float, area_max: float, en
                 y = S.num(it.get("buildYear"))
                 return bool(y) and abs(int(y) - target_year) <= 7
             return True
-        sp = [S.num(t.get("dealAmount")) / S.num(t.get("excluUseAr")) for t in trades if ok(t) and S.num(t.get("dealAmount"))]
-        jp = [S.num(r.get("deposit")) / S.num(r.get("excluUseAr")) for r in rents
-              if ok(r) and not S.num(r.get("monthlyRent")) and S.num(r.get("deposit"))]
-        if len(sp) >= 5 and len(jp) >= 5:
-            return {"전세가율": round(statistics.median(jp) / statistics.median(sp), 3), "매매표본": len(sp), "전세표본": len(jp),
+        sp: dict[str, list] = {}
+        jp: dict[str, list] = {}
+        for t in trades:
+            if ok(t) and S.num(t.get("dealAmount")):
+                sp.setdefault(key(t), []).append(S.num(t["dealAmount"]) / S.num(t["excluUseAr"]))
+        for r in rents:
+            if ok(r) and not S.num(r.get("monthlyRent")) and S.num(r.get("deposit")):
+                jp.setdefault(key(r), []).append(S.num(r["deposit"]) / S.num(r["excluUseAr"]))
+        ratios, n_s, n_j = [], 0, 0
+        for k in set(sp) & set(jp):
+            q = statistics.median(jp[k]) / statistics.median(sp[k])
+            if 0.2 <= q <= 1.2:
+                ratios.append(q)
+                n_s += len(sp[k])
+                n_j += len(jp[k])
+        if len(ratios) >= 3:
+            return {"전세가율": round(statistics.median(ratios), 3), "단지수": len(ratios), "매매표본": n_s, "전세표본": n_j,
                     "기간": f"최근 {months_back}개월", "구분": "신축(본 건 준공 ±7년)" if cohort else "전체"}
         return None
 
     out = {}
     for cohort in (True, False):
-        for mb in (12, 24):
+        for mb in (12, 24, 36):
             r = calc(mb, cohort)
             if r:
                 out["신축" if cohort else "전체"] = r
@@ -999,7 +1017,7 @@ def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: f
                 basis = "예정 매각가" if tgt.get("가격구분") == "예정 매각가" else ("추정 매매가" if out.get("매매") else "분양가")
                 out["전세"] = {"추정가(만원)": round(v), "공급평단가": round(v / supply_py),
                              "방법": f"비교 전세사례 부족 → 시군구 전세가율 {r['전세가율'] * 100:.0f}%({r['구분']}, {r['기간']}, "
-                                     f"전세 {r['전세표본']}건) × {basis}",
+                                     f"{r['단지수']}개 단지 단지별 중위) × {basis}",
                              "범위(만원)": [round(v * 0.93), round(v * 1.07)]}
     return out
 
