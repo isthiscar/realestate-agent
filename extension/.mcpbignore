@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+server/lib/
+server/venv/
+src/images/
+uv.lock
+live/
+cache/geo_cache.json
+cache/kapt_basis_cache.json
+cache/kosis_itm_cache.json
+cache/rtms*
+local_defaults.json

@@ -1,0 +1,178 @@
+{
+ "manifest_version": "0.4",
+ "name": "realestate-kr",
+ "display_name": "부동산 데이터 에이전트",
+ "version": "2.0.0",
+ "description": "주소·아파트명만 넣으면 실거래가·공시지가·건축물대장·청약·미분양·지도를 조회하고, IM 시장·입지 파트를 PPT/PDF로 작성 (GitHub 자동 업데이트)",
+ "long_description": "국토교통부·한국부동산원(공공데이터포털)과 브이월드 공공 API를 연결한 개인용 부동산 조회 도구입니다.\n\n- 실거래가 12종: 아파트·오피스텔·연립다세대·단독다가구 매매/전월세, 분양권, 상업업무용, 토지, 공장창고\n- 토지: 개별공시지가(추이), 토지특성, 토지이용계획, 토지소유 요약\n- 주택 공시가격: 공동주택가격(동·호), 개별주택가격\n- 건축물대장(표제부·총괄표제부·층별·전유부 등), 건축·주택 인허가\n- 공동주택 단지정보(K-apt), 청약홈 분양공고·경쟁률·당첨가점·통계\n- 지도 이미지: 항공사진/일반지도 + 지적도·용도지역 겹쳐보기\n- 미분양: 시군구 전체·준공 후 미분양 월별 추이 (KOSIS, 국가데이터처 MCP 경유)\n- 주변시설 직선거리: 산업단지·IC·철도역·KTX·관공서 / 학교·마트·행정복지센터·병원·공원\n- 시장·입지 보고서: 자산개요·광역/협역 입지·미분양·매매/전세 추이·주변단지 시세를 IM 양식 PPT와 PDF로 생성",
+ "author": {
+  "name": "isthiscar"
+ },
+ "icon": "icon.png",
+ "server": {
+  "type": "uv",
+  "entry_point": "launcher.py",
+  "mcp_config": {
+   "command": "uv",
+   "args": [
+    "run",
+    "--directory",
+    "${__dirname}",
+    "launcher.py"
+   ],
+   "env": {
+    "DATA_GO_KR_API_KEY": "${user_config.data_go_kr_api_key}",
+    "VWORLD_API_KEY": "${user_config.vworld_api_key}",
+    "VWORLD_DOMAIN": "localhost",
+    "REALESTATE_IMAGE_DIR": "${user_config.image_dir}",
+    "GITHUB_TOKEN_REALESTATE": "${user_config.github_token}",
+    "REALESTATE_AUTO_UPDATE": "${user_config.auto_update}",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8"
+   }
+  }
+ },
+ "tools": [
+  {
+   "name": "property_report",
+   "description": "주소/단지명 하나로 종합 조회 (토지·건축물·단지·실거래·공시가격)"
+  },
+  {
+   "name": "resolve_location",
+   "description": "주소/단지명이 어느 필지·법정동으로 해석되는지 확인"
+  },
+  {
+   "name": "get_real_transactions",
+   "description": "국토부 실거래가 12종 조회 + 요약통계"
+  },
+  {
+   "name": "get_market_summary",
+   "description": "인근 시세조사: 동네 단지별 중위가·평당가·최근거래 비교 + 월별 추이"
+  },
+  {
+   "name": "get_land_info",
+   "description": "개별공시지가·토지특성·토지이용계획·토지소유"
+  },
+  {
+   "name": "get_official_housing_price",
+   "description": "공동주택가격(동·호)·개별주택가격"
+  },
+  {
+   "name": "get_building_register",
+   "description": "건축물대장 (표제부·총괄표제부·층별·전유부 등)"
+  },
+  {
+   "name": "get_building_permits",
+   "description": "건축·주택 인허가 이력"
+  },
+  {
+   "name": "get_apartment_complex",
+   "description": "공동주택 단지정보 (K-apt)"
+  },
+  {
+   "name": "search_presale",
+   "description": "청약홈 분양공고 검색"
+  },
+  {
+   "name": "get_presale_detail",
+   "description": "분양 상세: 주택형별 분양가·경쟁률·당첨가점·특별공급"
+  },
+  {
+   "name": "get_subscription_stats",
+   "description": "청약 신청·당첨 통계"
+  },
+  {
+   "name": "get_map_image",
+   "description": "항공사진/지도 이미지 + 지적도·용도지역 오버레이"
+  },
+  {
+   "name": "call_public_api",
+   "description": "고급: 공공데이터포털 API 직접 호출"
+  },
+  {
+   "name": "call_vworld_api",
+   "description": "고급: 브이월드 API 직접 호출"
+  },
+  {
+   "name": "create_market_report",
+   "description": "IM 시장·입지 파트(자산개요·입지·미분양·거래추이·시세) PPT/PDF 생성"
+  },
+  {
+   "name": "check_market_report",
+   "description": "작성 중인 보고서 진행 상태·결과 확인"
+  },
+  {
+   "name": "get_unsold_housing",
+   "description": "시군구 미분양(전체·준공 후) 월별 추이 (KOSIS)"
+  },
+  {
+   "name": "get_location_facilities",
+   "description": "입지분석용 주변시설 직선거리 (광역·협역)"
+  },
+  {
+   "name": "agent_update",
+   "description": "GitHub 자동 업데이트 상태 확인·즉시 업데이트"
+  }
+ ],
+ "user_config": {
+  "data_go_kr_api_key": {
+   "type": "string",
+   "title": "공공데이터포털 인증키",
+   "description": "data.go.kr 마이페이지 > 인증키 발급현황의 일반 인증키",
+   "sensitive": true,
+   "required": true
+  },
+  "vworld_api_key": {
+   "type": "string",
+   "title": "브이월드 인증키",
+   "description": "vworld.kr 마이포털 > 인증키관리의 키 (공시지가·공시가격·지도·도로명주소 검색에 필요)",
+   "sensitive": true,
+   "required": false
+  },
+  "image_dir": {
+   "type": "directory",
+   "title": "지도 이미지 저장 폴더",
+   "description": "지도·항공사진 이미지를 저장할 폴더 (그 안에 '부동산지도' 폴더가 생깁니다)",
+   "required": false,
+   "default": "${HOME}/Downloads"
+  },
+  "github_token": {
+   "type": "string",
+   "title": "GitHub 읽기 토큰 (자동 업데이트)",
+   "description": "isthiscar/realestate-agent 저장소 Contents 읽기 전용 fine-grained 토큰. 비우면 자동 업데이트 없이 설치본으로 실행",
+   "sensitive": true,
+   "required": false
+  },
+  "auto_update": {
+   "type": "boolean",
+   "title": "자동 업데이트",
+   "description": "켜면 시작할 때와 보고서 작성 때 GitHub 최신 코드를 받아 씀",
+   "required": false,
+   "default": true
+  }
+ },
+ "compatibility": {
+  "platforms": [
+   "win32",
+   "darwin",
+   "linux"
+  ],
+  "runtimes": {
+   "python": ">=3.10"
+  }
+ },
+ "keywords": [
+  "부동산",
+  "실거래가",
+  "공시지가",
+  "건축물대장",
+  "청약",
+  "vworld",
+  "data.go.kr",
+  "미분양",
+  "KOSIS",
+  "입지분석",
+  "IM"
+ ],
+ "license": "MIT"
+}

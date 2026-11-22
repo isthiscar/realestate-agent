@@ -1,0 +1,12 @@
+# 비밀·로컬 전용
+.env
+extension/local_defaults.json
+*.mcpb
+dist/
+build/
+cache/
+live/
+__pycache__/
+*.pyc
+.venv/
+tests/out*/
