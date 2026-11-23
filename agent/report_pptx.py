@@ -418,7 +418,7 @@ def combo_chart(slide, x, y, w, h, cats: list[str], counts: list[float], prices:
     p_lo, p_hi = _line_range(pv0)
     # 막대 꼭대기가 선의 가장 낮은 점보다 아래(그 높이의 85%)에 오도록 거래량 축 상한을 정함
     low_frac = ((min(pv0) - p_lo) / (p_hi - p_lo)) if pv0 and p_hi > p_lo else 0.5
-    bar_frac = min(0.5, max(0.2, low_frac * 0.85 - 0.05))
+    bar_frac = min(0.5, max(0.1, low_frac * 0.7 - 0.04))  # 막대 레이블 높이까지 띄움
     top = max(4, cmax / bar_frac)
     unit = next(u for u in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 10 ** 9) if u * 5 >= top)
     va.minimum_scale = p_lo
