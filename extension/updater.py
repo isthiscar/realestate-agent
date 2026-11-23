@@ -155,9 +155,6 @@ def fetch(sha: str) -> str:
 def update(force: bool = False) -> tuple[str, bool]:
     """(코드 폴더, 이번에 바뀌었는지). 실패하면 기존 코드 폴더를 돌려줌."""
     cur = current()
-    if not TOKEN:
-        _status(ok=False, error="GitHub 읽기 토큰이 없습니다(확장 설정). 설치본/마지막 코드로 실행합니다.")
-        return code_dir(), False
     try:
         sha = latest_sha()
         if cur and cur.get("sha") == sha and not force:
@@ -168,8 +165,9 @@ def update(force: bool = False) -> tuple[str, bool]:
         log(f"업데이트: {sha[:12]}")
         return d, True
     except urllib.error.HTTPError as e:
-        msg = {401: "토큰이 잘못됐거나 만료됐습니다", 403: "토큰 권한 부족 또는 호출 제한",
-               404: "저장소를 찾을 수 없습니다(토큰에 이 저장소 읽기 권한이 있는지 확인)"}.get(e.code, f"HTTP {e.code}")
+        msg = {401: "토큰이 잘못됐거나 만료됐습니다(공개 저장소면 토큰 칸을 비워도 됩니다)",
+               403: "GitHub 호출 제한(토큰 없이 쓰면 IP당 시간 60회) 또는 토큰 권한 부족 — 설치본/마지막 코드로 실행",
+               404: "저장소를 찾을 수 없습니다(비공개 저장소면 읽기 토큰 필요)"}.get(e.code, f"HTTP {e.code}")
         try:
             gh = json.loads(e.read()[:2000] or b"{}").get("message")
         except Exception:
