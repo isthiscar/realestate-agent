@@ -877,8 +877,8 @@ def build_pptx(data: dict, out_path: Path, brand: str = "JB Asset Management") -
         bullets(s, ov["bullets"], h=Cm(1.6))
         section_label(s, Cm(2.04), Cm(5.45), "자산개요")
         rows = ov["rows"]
-        kv_table(s, Cm(2.04), Cm(6.15), Cm(12.9), rows, col1=Cm(2.8), row_h=Cm(min(0.86, 12.6 / (len(rows) + 1))),
-                 max_h=Cm(12.6))
+        kv_table(s, Cm(2.04), Cm(6.15), Cm(12.9), rows, col1=Cm(2.8),
+                 row_h=Cm(max(0.75, min(1.5, 12.6 / (len(rows) + 1)))), max_h=Cm(12.6))  # 행이 적어도 오른쪽 사진 높이에 맞춤
         section_label(s, Cm(15.25), Cm(5.45), ov.get("img1_title", "항공사진"))
         _pic(s, ov.get("img1"), Cm(15.25), Cm(6.15), Cm(11.85), Cm(6.3))
         section_label(s, Cm(15.25), Cm(12.85), ov.get("img2_title", "위치도"))

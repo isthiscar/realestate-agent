@@ -327,6 +327,12 @@ async def unsold(addr: str, lawd_cd: str | None, months: int = 12, target_units:
     total = total if isinstance(total, dict) else {}
     sido_done = sido_done if isinstance(sido_done, dict) else {}
     periods = sorted(done)[-months:]
+    if 0 < len(periods) < months and sido_done:  # 행정구역 신설 등으로 시군구 자료가 짧음 → 시도 기간으로 맞추고 앞은 빈칸
+        tail = [p for p in sorted(sido_done) if p <= periods[-1]][-months:]
+        if len(tail) > len(periods):
+            first = periods[0]
+            periods = tail
+            note = (note + " · " if note else "") + f"{sgg} 자료는 '{first[2:4]}.{int(first[4:6])}월부터 집계(신설·개편)"
     res: dict[str, Any] = {"시도": sido, "시군구": sgg, "출처": KOSIS_SRC, "기간": [ym_label(p) for p in periods],
                            "준공후": [done.get(p) for p in periods], "전체": [total.get(p) for p in periods],
                            "분양전": [(total[p] - done[p]) if p in total and p in done else None for p in periods],
@@ -334,7 +340,7 @@ async def unsold(addr: str, lawd_cd: str | None, months: int = 12, target_units:
     if note:
         res["참고"] = note
     if target_units and periods:
-        res["본건제외"] = [max(0, (v or 0) - target_units) for v in res["준공후"]]
+        res["본건제외"] = [None if v is None else max(0, v - target_units) for v in res["준공후"]]
         last = res["준공후"][-1]
         res["본건비중%"] = round(target_units / last * 100) if last else None
     if not periods:
@@ -1444,7 +1450,10 @@ async def comparables(loc: dict, radius_km: float = 1.5, quarters: int = 12, are
         })
 
     # 6) 비교단지 고르기: 실거래가 있는 '단지급'(K-apt 등록 또는 거래 많은 곳) 우선, 가까운 순
-    elig = [r for r in out_rows if r["비교표"]]
+    _RENTAL = re.compile(r"임대|행복주택|공공지원|매입약정|청년주택|역세권청년")
+    elig = [r for r in out_rows if r["비교표"] and (include_names or not _RENTAL.search(r["단지명"] or ""))]
+    if not include_names:
+        diag["임대제외"] = sum(1 for r in out_rows if r["비교표"] and _RENTAL.search(r["단지명"] or ""))
 
     def score(r):  # 가까울수록, 준공 연차가 비슷할수록(20년 ≈ 0.8km), 규모가 클수록 우선
         y = r.get("준공연도")
@@ -1653,6 +1662,23 @@ async def presale_info(name: str, area: float | None, region: str = "", place: d
                 "전용㎡": pick["전용㎡"], "공급㎡": pick["공급㎡"], "공급비율": round(pick["공급㎡"] / pick["전용㎡"], 4),
                 "분양가최고(만원)": pick["분양가최고(만원)"]}
     return None
+
+
+def builder_cell(name: str | None) -> str:
+    """시공사 칸: 여러 곳이면 '첫 곳 외', 길면 '신화\n종합건설'처럼 낱말 경계에서 줄바꿈."""
+    n = re.sub(r"\(주\)|㈜|주식회사|\(유\)", "", name or "").strip()
+    if not n:
+        return "-"
+    parts = [p.strip() for p in re.split(r"[,/·]|\s{2,}", n) if p.strip()]
+    more = " 외" if len(parts) > 1 else ""
+    n = parts[0]
+    if len(n) <= 5:
+        return n + more
+    for suf in ("종합건설", "산업개발", "엔지니어링", "건설산업", "이앤씨", "E&C", "글로벌", "건설", "주택", "산업", "개발"):
+        i = n.find(suf)
+        if i >= 2:
+            return n[:i] + "\n" + n[i:] + more
+    return n[:len(n) // 2] + "\n" + n[len(n) // 2:] + more
 
 
 def types_text(agg: dict[int, int]) -> str:
@@ -1953,10 +1979,14 @@ def bullets_near(rows: list[dict], radius: float) -> list[str]:
 
 
 def bullets_unsold(u: dict, target_units: int | None) -> list[str]:
-    v = u["준공후"]
-    lab = [f"'{p[2:4]}.{int(p[4:6])}" for p in u.get("periods", [])] or u["기간"]
+    v_all = u["준공후"]
+    lab_all = [f"'{p[2:4]}.{int(p[4:6])}" for p in u.get("periods", [])] or u["기간"]
+    i0 = next((i for i, x in enumerate(v_all) if x is not None), 0)
+    v, lab = v_all[i0:], lab_all[i0:]  # 시군구 문장은 첫 집계 월부터
     if not v:
         return ["미분양 통계를 불러오지 못했음"]
+    u = {**u, "분양전": (u.get("분양전") or [])[i0:], "전체": (u.get("전체") or [])[i0:]}
+    sd_v, sd_lab = u.get("시도_준공후") or [], lab_all
     out = []
     pre = [x for x in u.get("분양전", []) if x is not None]
     tot = [x for x in u.get("전체", []) if x is not None]
@@ -1967,7 +1997,7 @@ def bullets_unsold(u: dict, target_units: int | None) -> list[str]:
         out.append(s)
         if u.get("시도_준공후") and u["시도_준공후"][0] and u["시도_준공후"][-1]:
             a, b = u["시도_준공후"][0], u["시도_준공후"][-1]
-            out.append(f"{u['시도']} 전체 준공 후 미분양은 {lab[-1]}월 {int(b):,}세대로 {lab[0]}월 대비 {_pct(a, b):+.0f}%")
+            out.append(f"{u['시도']} 전체 준공 후 미분양은 {sd_lab[-1]}월 {int(b):,}세대로 {sd_lab[0]}월 대비 {_pct(a, b):+.0f}%")
         return out
     if not v[0]:
         s = f"{u['시군구']} 준공 후 미분양은 **{lab[0]}월 0세대에서 {lab[-1]}월 {int(v[-1]):,}세대로 증가**"
@@ -1982,7 +2012,7 @@ def bullets_unsold(u: dict, target_units: int | None) -> list[str]:
                    "추정되어, 본 건 해소 시 지역 미분양 물량 감소 효과가 클 것으로 기대됨")
     elif u.get("시도_준공후") and u["시도_준공후"][0] and u["시도_준공후"][-1]:
         a, b = u["시도_준공후"][0], u["시도_준공후"][-1]
-        out.append(f"{u['시도']} 전체 준공 후 미분양은 {lab[-1]}월 {int(b):,}세대로 {lab[0]}월 대비 {_pct(a, b):+.0f}%")
+        out.append(f"{u['시도']} 전체 준공 후 미분양은 {sd_lab[-1]}월 {int(b):,}세대로 {sd_lab[0]}월 대비 {_pct(a, b):+.0f}%")
     return out
 
 
@@ -2493,13 +2523,13 @@ async def market_report(location: str, radius_km: float = 1.5, area_min: float |
                           f"{tgt['매매공급평단가']:,}만원" if tgt.get("매매공급평단가") else "-",
                           tgt.get("전세표시", "-"),
                           f"{tgt['전세공급평단가']:,}만원" if tgt.get("전세공급평단가") else "-",
-                          ((presale or {}).get("시공사") or (ov or {}).get("시공사") or "-").replace("(주)", "").replace("주식회사", "").strip()])
+                          builder_cell((presale or {}).get("시공사") or (ov or {}).get("시공사"))])
         sel = [r for r in cx_rows if r.get("비교표")][:7]
         for r in sel:
             trows.append([str(r["no"]), r["단지명"], r["준공"], f"{r['세대수']:,}" if r.get("세대수") else "-",
                           f"{r['전용㎡']}㎡" if r.get("전용㎡") else "-", _fmt_eok(r.get("매매가(만원)")),
                           f"{r['매매공급평단가']:,}만원" if r.get("매매공급평단가") else "-", _fmt_eok(r.get("전세가(만원)")),
-                          f"{r['전세공급평단가']:,}만원" if r.get("전세공급평단가") else "-", r.get("시공사") or "-"])
+                          f"{r['전세공급평단가']:,}만원" if r.get("전세공급평단가") else "-", builder_cell(r.get("시공사"))])
         old = [r for r in sel if (r.get("매매기준개월") or 0) > 12 or (r.get("전세기준개월") or 0) > 12]
         notes = [f"* 실거래 {cmp_['면적구간']} 최근 6개월 중위값(거래 없으면 12→24→36개월로 확대), 공급면적은 K-apt 관리비부과면적/전용면적 비율로 환산"]
         if tgt.get("전세추정"):
