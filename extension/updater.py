@@ -33,7 +33,33 @@ def _env(name: str, default: str = "") -> str:
 
 REPO = _env("REALESTATE_REPO", "isthiscar/realestate-agent") or "isthiscar/realestate-agent"
 BRANCH = _env("REALESTATE_BRANCH", "main") or "main"
-TOKEN = _env("GITHUB_TOKEN_REALESTATE")
+_ZW = "\u200b\u200c\u200d\u2060\ufeff"
+STARTED = time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _clean_token(v: str) -> str:
+    """붙여넣기 실수 보정: 따옴표·공백·줄바꿈·보이지 않는 문자 제거, 예전 값 뒤에 새 값이 붙었으면 마지막 토큰만."""
+    v = (v or "").strip().strip('"').strip("'")
+    v = "".join(ch for ch in v if ch not in _ZW and not ch.isspace())
+    for pre in ("github_pat_", "ghp_"):
+        if v.count(pre) > 1:
+            v = pre + v.split(pre)[-1]
+    return v
+
+
+RAW_TOKEN = _env("GITHUB_TOKEN_REALESTATE")
+TOKEN = _clean_token(RAW_TOKEN)
+
+
+def token_info() -> dict:
+    """토큰 값은 드러내지 않고 형식만 점검."""
+    if not RAW_TOKEN:
+        return {"상태": "없음"}
+    kind = ("fine-grained(github_pat_)" if TOKEN.startswith("github_pat_") else
+            "classic(ghp_)" if TOKEN.startswith("ghp_") else "형식 다름(토큰이 아닌 값)")
+    return {"형식": kind, "길이": len(TOKEN), "정상길이": 93 if TOKEN.startswith("github_pat_") else None,
+            "입력값_안_토큰_개수": RAW_TOKEN.count("github_pat_") + RAW_TOKEN.count("ghp_"),
+            "보정함": RAW_TOKEN != TOKEN}
 
 
 def log(msg: object) -> None:
@@ -144,7 +170,11 @@ def update(force: bool = False) -> tuple[str, bool]:
     except urllib.error.HTTPError as e:
         msg = {401: "토큰이 잘못됐거나 만료됐습니다", 403: "토큰 권한 부족 또는 호출 제한",
                404: "저장소를 찾을 수 없습니다(토큰에 이 저장소 읽기 권한이 있는지 확인)"}.get(e.code, f"HTTP {e.code}")
-        _status(ok=False, error=msg)
+        try:
+            gh = json.loads(e.read()[:2000] or b"{}").get("message")
+        except Exception:
+            gh = None
+        _status(ok=False, error=msg, github_message=gh, http=e.code)
         log(msg)
     except Exception as e:  # 네트워크 등
         _status(ok=False, error=f"{type(e).__name__}: {e}")

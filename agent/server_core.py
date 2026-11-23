@@ -2315,7 +2315,9 @@ async def agent_update(force: Annotated[bool, Field(description="지금 바로 G
         cur = updater.current() or {}
         return {"실행중_코드": os.environ.get("REALESTATE_CODE_DIR", str(BASE_DIR)), "최신_받은_커밋": cur.get("sha", "")[:12],
                 "받은_시각": cur.get("at"), "확인결과": st, "이번_업데이트": note or "변경 없음",
-                "저장소": updater.REPO, "토큰": "설정됨" if updater.TOKEN else "없음(확장 설정에서 GitHub 읽기 토큰 입력)"}
+                "저장소": updater.REPO, "토큰": "설정됨" if updater.TOKEN else "없음(확장 설정에서 GitHub 읽기 토큰 입력)",
+                "토큰_점검": updater.token_info() if hasattr(updater, "token_info") else None,
+                "확장_시작시각": getattr(updater, "STARTED", None)}
     return await _run(go())
 
 
