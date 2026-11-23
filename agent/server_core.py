@@ -2311,7 +2311,10 @@ async def agent_update(force: Annotated[bool, Field(description="지금 바로 G
         except ImportError:
             return {"상태": "자동 업데이트 없는 설치본입니다(1.x). 2.0 이상 확장을 설치하세요."}
         note = await asyncio.to_thread(_hot_update, force) if force else None
-        st = updater.status()
+        st = dict(updater.status())
+        if st.get("ok"):  # 성공했으면 이전 실패 기록(github_message·http)은 숨김
+            st.pop("github_message", None)
+            st.pop("http", None)
         cur = updater.current() or {}
         return {"실행중_코드": os.environ.get("REALESTATE_CODE_DIR", str(BASE_DIR)), "최신_받은_커밋": cur.get("sha", "")[:12],
                 "받은_시각": cur.get("at"), "확인결과": st, "이번_업데이트": note or "변경 없음",
