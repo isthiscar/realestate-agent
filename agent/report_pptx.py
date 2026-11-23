@@ -99,7 +99,22 @@ def textbox(slide, x, y, w, h, text: str = "", size: float = 11, bold: bool = Fa
     return tb
 
 
+def _fit_size(items: list[str], w, h, size: float, min_size: float = 9.0) -> float:
+    """줄 수를 세어 상자(h)를 넘지 않는 글자 크기(최소 min_size)."""
+    plain = [re.sub(r"\*\*", "", t) for t in items]
+    fs = size
+    while fs > min_size:
+        cap = max(10.0, (w / 12700 - 14) / fs)
+        lines = sum(max(1, math.ceil((_text_units(t) + 1.5) / cap)) for t in plain)
+        need = lines * fs * 1.1 * 1.25 + len(plain) * 3  # pt
+        if need <= h / 12700:
+            break
+        fs -= 0.5
+    return fs
+
+
 def bullets(slide, items: list[str], x=Cm(2.0), y=Cm(3.45), w=Cm(26.2), h=Cm(1.8), size: float = 11):
+    size = _fit_size(items, w, h, size)
     tb = slide.shapes.add_textbox(x, y, w, h)
     tf = tb.text_frame
     tf.word_wrap = True
@@ -303,7 +318,12 @@ def grid_table(slide, x, y, w, head: list[str], rows: list[list[str]], widths: l
         t.rows[r].height = row_h
         for c, v in enumerate(row):
             fill = RGBColor(0xF2, 0xF2, 0xF2) if (highlight_first and r == 1) else None
-            _cell_text(t.cell(r, c), v, size, highlight_first and r == 1 and c <= 1, TXT, fill=fill)
+            fs = size
+            col_pt = t.columns[c].width / 12700 - 10  # 좌우 여백
+            longest = max((_text_units(x) for x in str(v).split("\n")), default=0)
+            if c >= 2 and longest and longest * fs > col_pt:  # 숫자 칸만: 한 줄에 들어가게
+                fs = max(7.5, col_pt / longest)
+            _cell_text(t.cell(r, c), v, fs, highlight_first and r == 1 and c <= 1, TXT, fill=fill)
     for r in range(len(rows) + 1):
         for c in range(len(head)):
             _cell_border(t.cell(r, c), "TB" + ("L" if c else "") + ("R" if c < len(head) - 1 else ""), "8C8C8C", 0.5)
@@ -373,7 +393,7 @@ def bar_chart(slide, x, y, w, h, cats: list[str], vals: list[float], color: RGBC
 
 def combo_chart(slide, x, y, w, h, cats: list[str], counts: list[float], prices: list[float | None],
                 count_name="거래량", price_name="평균평단가"):
-    """막대(거래량, 왼쪽 축) + 꺾은선(공급 3.3㎡당 평균가, 오른쪽 축)."""
+    """막대(거래량, 오른쪽 축) + 꺾은선(공급 3.3㎡당 평균가, 왼쪽 축) — 칠곡 IM 레퍼런스 배치."""
     cd = CategoryChartData()
     cd.categories = cats
     cd.add_series(count_name, counts)
@@ -392,10 +412,19 @@ def combo_chart(slide, x, y, w, h, cats: list[str], counts: list[float], prices:
     bar = plot.series[0]
     bar.format.fill.solid()
     bar.format.fill.fore_color.rgb = BAR
-    va = ch.value_axis
+    va = ch.value_axis  # 기본축(왼쪽) = 평단가(꺾은선)
     cmax = max([c for c in counts if c is not None] or [1])
-    va.minimum_scale = 0
-    va.maximum_scale = max(5, math.ceil(cmax * 1.9 / 5) * 5)
+    pv0 = [p for p in prices if p is not None]
+    p_lo, p_hi = _line_range(pv0)
+    # 막대 꼭대기가 선의 가장 낮은 점보다 아래(그 높이의 85%)에 오도록 거래량 축 상한을 정함
+    low_frac = ((min(pv0) - p_lo) / (p_hi - p_lo)) if pv0 and p_hi > p_lo else 0.5
+    bar_frac = min(0.5, max(0.2, low_frac * 0.85 - 0.05))
+    top = max(4, cmax / bar_frac)
+    unit = next(u for u in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 10 ** 9) if u * 5 >= top)
+    va.minimum_scale = p_lo
+    va.maximum_scale = p_hi
+    va.tick_labels.number_format = "#,##0"
+    va.tick_labels.number_format_is_linked = False
     va.has_major_gridlines = True
     va.major_gridlines.format.line.color.rgb = RGBColor(0xE6, 0xE6, 0xE6)
     va.format.line.fill.background()
@@ -455,8 +484,6 @@ def combo_chart(slide, x, y, w, h, cats: list[str], counts: list[float], prices:
         el = etree.SubElement(lc, qn("c:axId"))
         el.set("val", ax)
     barChart.addnext(lc)
-    pv = [p for p in prices if p is not None]
-    lo, hi = _line_range(pv)
     cat_ax = etree.fromstring(
         f'<c:catAx xmlns:c="{C}"><c:axId val="50050"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
         f'<c:delete val="1"/><c:axPos val="b"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/>'
@@ -464,15 +491,22 @@ def combo_chart(slide, x, y, w, h, cats: list[str], counts: list[float], prices:
         f'<c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>')
     val_ax = etree.fromstring(
         f'<c:valAx xmlns:c="{C}" xmlns:a="{A}"><c:axId val="50060"/><c:scaling><c:orientation val="minMax"/>'
-        f'<c:max val="{hi}"/><c:min val="{lo}"/></c:scaling><c:delete val="0"/><c:axPos val="r"/>'
+        f'<c:max val="{unit * 5}"/><c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="r"/>'
         f'<c:numFmt formatCode="#,##0" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/>'
         f'<c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr>'
         f'<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="850"><a:solidFill><a:srgbClr val="595959"/></a:solidFill>'
         f'<a:latin typeface="{FONT}"/><a:ea typeface="{FONT}"/></a:defRPr></a:pPr><a:endParaRPr lang="ko-KR"/></a:p></c:txPr>'
-        f'<c:crossAx val="50050"/><c:crosses val="max"/><c:crossBetween val="between"/></c:valAx>')
+        f'<c:crossAx val="50050"/><c:crosses val="max"/><c:crossBetween val="between"/><c:majorUnit val="{unit}"/></c:valAx>')
     last_ax = plotArea.findall(qn("c:valAx"))[-1]
     last_ax.addnext(cat_ax)
     cat_ax.addnext(val_ax)
+    # 축 맞바꿈: 막대 → 보조축(오른쪽 거래량), 꺾은선 → 기본축(왼쪽 평단가)
+    bar_ids = [e.get("val") for e in barChart.findall(qn("c:axId"))]
+    line_ids = [e.get("val") for e in lc.findall(qn("c:axId"))]
+    for e, v in zip(barChart.findall(qn("c:axId")), line_ids):
+        e.set("val", v)
+    for e, v in zip(lc.findall(qn("c:axId")), bar_ids):
+        e.set("val", v)
     _span_blanks(ch)
     return gf
 
@@ -918,17 +952,22 @@ def build_pptx(data: dict, out_path: Path, brand: str = "JB Asset Management") -
     pr = sec.get("prices")
     if pr:
         s = new_slide(pr["title"], pr["subtitle"])
-        bullets(s, pr["bullets"], h=Cm(1.6))
+        bullets(s, pr["bullets"], h=Cm(2.35))
         section_label(s, Cm(2.04), Cm(5.95), pr.get("label", "주요 단지 시세 현황"))
         _pic(s, pr.get("map"), Cm(2.02), Cm(6.78), Cm(10.33), Cm(12.7))
         head = ["", "구분", "준공\n년도", "세대수", "전용\n면적", "매매가", "매매공급\n평단가", "전세가", "전세공급\n평단가", "시공사"]
         rows = pr["rows"]
-        notes = pr.get("notes", [])[:3]
-        rh = min(1.45, (19.3 - 6.78 - 1.4 - 0.4 * len(notes) - 0.2) / max(1, len(rows)))
-        grid_table(s, Cm(12.9), Cm(6.78), Cm(15.7), head, rows, [0.6, 3.4, 1.15, 1.0, 1.0, 1.6, 1.4, 1.6, 1.4, 1.6],
+        notes = pr.get("notes", [])[:4]
+        cap = (Cm(15.7) / 12700 - 6) / 7.0  # 7pt 한 줄 글자 수
+        n_lines = [max(1, math.ceil(_text_units(n) / cap)) for n in notes]
+        note_h = sum(0.12 + 0.3 * k for k in n_lines)
+        rh = min(1.45, (19.3 - 6.78 - 1.4 - note_h - 0.2) / max(1, len(rows)))
+        grid_table(s, Cm(12.9), Cm(6.78), Cm(15.7), head, rows, [0.6, 3.25, 1.15, 1.0, 1.0, 1.6, 1.55, 1.6, 1.55, 1.5],
                    row_h=Cm(rh), head_h=Cm(1.4), size=9 if len(rows) > 6 else 10, highlight_first=pr.get("has_target", True))
-        for j, n in enumerate(notes):
-            small_note(s, Cm(12.9), Cm(6.78 + 1.4 + rh * len(rows) + 0.12 + j * 0.4), Cm(15.7), n, size=7)
+        ny = 6.78 + 1.4 + rh * len(rows) + 0.12
+        for n, k in zip(notes, n_lines):
+            small_note(s, Cm(12.9), Cm(ny), Cm(15.7), n, size=7)
+            ny += 0.12 + 0.3 * k
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_path))

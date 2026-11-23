@@ -1143,7 +1143,13 @@ def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: f
         return None, len(vals)
 
     def pack(v, method, spread=0.07):
-        return {"추정가(만원)": round(v), "공급평단가": round(v / supply_py), "방법": method,
+        short = ("비교사례 중위" if method.startswith("비교사례") else
+                 "시군구 전세가율 적용" if "시군구 전세가율" in method and "산정 불가" not in method else
+                 "비교단지 전세가율 적용" if "자체 전세가율" in method else
+                 "시군구 전 평형 전세가율 적용" if "전 평형 전세가율" in method else
+                 "시군구 신축 시세 기준" if "시군구 시세" in method else
+                 "시군구 전세 시세 기준" if "시군구 전세 시세" in method else method[:20])
+        return {"추정가(만원)": round(v), "공급평단가": round(v / supply_py), "방법": method, "요약": short,
                 "범위(만원)": [round(v * (1 - spread)), round(v * (1 + spread))]}
 
     # 매매
@@ -2055,15 +2061,15 @@ def bullets_prices(rows: list[dict], target: dict) -> list[str]:
         e = target["전세추정"]
         lo, hi = e["범위(만원)"]
         out.append(f"본 건 전세가는 **약 {e['추정가(만원)'] / 10000:.2f}억원(공급 3.3㎡당 {e['공급평단가']:,}만원, "
-                   f"범위 {lo / 10000:.2f}~{hi / 10000:.2f}억원)**으로 추정됨({e['방법']})")
+                   f"범위 {lo / 10000:.2f}~{hi / 10000:.2f}억원)**으로 추정됨({e.get('요약') or e['방법']}, 근거는 하단 주석)")
         tj = None  # 추정치를 다시 비교단지 평균과 비교하지 않음
     if target.get("매매추정") and target.get("가격구분") != "추정 시세" and target.get("매매가"):
         e = target["매매추정"]
         out.append(f"주변 시세로 본 본 건 적정 매매가는 약 {e['추정가(만원)'] / 10000:.2f}억원(공급 3.3㎡당 {e['공급평단가']:,}만원, "
-                   f"{e['방법']})으로 {target.get('가격구분', '매매가')} 대비 {_pct(target['매매가'], e['추정가(만원)']):+.0f}% 수준임")
+                   f"{e.get('요약') or e['방법']})으로 {target.get('가격구분', '매매가')} 대비 {_pct(target['매매가'], e['추정가(만원)']):+.0f}% 수준임")
     elif target.get("가격구분") == "추정 시세" and target.get("매매추정"):
         e = target["매매추정"]
-        out.append(f"본 건 매매가는 **약 {e['추정가(만원)'] / 10000:.2f}억원(공급 3.3㎡당 {e['공급평단가']:,}만원)**으로 추정됨({e['방법']})")
+        out.append(f"본 건 매매가는 **약 {e['추정가(만원)'] / 10000:.2f}억원(공급 3.3㎡당 {e['공급평단가']:,}만원)**으로 추정됨({e.get('요약') or e['방법']}, 근거는 하단 주석)")
     if tj and jp:
         s3 = f"본 건 전세가(공급 3.3㎡당 {tj:,}만원)는 비교단지 전세 평균 대비 {_pct(statistics.mean(jp), tj):+.0f}%"
         if target.get("매매가") and target.get("전세가"):
