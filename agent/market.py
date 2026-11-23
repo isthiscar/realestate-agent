@@ -1116,7 +1116,7 @@ def district_price(rows: tuple[list, list], area_min: float, area_max: float, en
 
 
 def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: float,
-                    excl_area: float | None = None) -> dict:
+                    excl_area: float | None = None, target_year: int | None = None) -> dict:
     """본 건 매매·전세 시세 추정(예정가·분양가가 없을 때).
     매매: ① 비교사례 5곳 중위 ② 시군구 시세(전용 ㎡당, 신축 우선) × 본 건 전용.
     전세: ① 비교사례 중위 ② 시군구 전세가율(신축→전체) × 매매 기준가 ③ 비교단지 자체 전세가율
@@ -1126,8 +1126,18 @@ def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: f
         return out
     dprice = ratio_info.get("시세") or {}
 
+    def comparable(r):
+        """시세 추정에 쓸 사례: 50세대 이상(모르면 허용)·준공 ±10년(본 건 연식을 알 때)."""
+        hh = r.get("세대수")
+        if hh is not None and hh < 50:
+            return False
+        if target_year:
+            y = r.get("준공연도")
+            return bool(y) and abs(int(y) - target_year) <= 10
+        return True
+
     def from_cases(key):
-        vals = [r[key] for r in cands[:5] if r.get(key)]
+        vals = [r[key] for r in cands[:7] if r.get(key) and comparable(r)][:5]
         if len(vals) >= 2:
             return statistics.median(vals), len(vals)
         return None, len(vals)
@@ -1140,11 +1150,11 @@ def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: f
     if not tgt.get("매매가") or tgt.get("가격구분") == "분양가(최고)":
         pp, n = from_cases("매매공급평단가")
         if pp:
-            out["매매"] = pack(pp * supply_py, f"비교사례 {n}곳 중위값")
+            out["매매"] = pack(pp * supply_py, f"비교사례 {n}곳 중위값(50세대 이상·비슷한 연식)")
         elif dprice.get("매매") and excl_area:
             d = dprice["매매"]
             out["매매"] = pack(d["㎡당(만원)"] * excl_area,
-                             f"비교사례 부족({n}곳) → 시군구 시세 전용 ㎡당 {d['㎡당(만원)']:,.0f}만원"
+                             f"비슷한 연식·규모 비교사례 부족({n}곳) → 시군구 시세 전용 ㎡당 {d['㎡당(만원)']:,.0f}만원"
                              f"({d['구분']}, {d['기간']}, {d['단지수']}개 단지 중위) × 전용 {excl_area:g}㎡", 0.10)
     sale_ref = tgt.get("매매가") if tgt.get("가격구분") == "예정 매각가" else None
     sale_ref = sale_ref or (out.get("매매") or {}).get("추정가(만원)") or tgt.get("매매가")
@@ -1154,7 +1164,7 @@ def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: f
     if not tgt.get("전세가"):
         pp, n = from_cases("전세공급평단가")
         if pp:
-            out["전세"] = pack(pp * supply_py, f"비교사례 {n}곳 중위값")
+            out["전세"] = pack(pp * supply_py, f"비교사례 {n}곳 중위값(50세대 이상·비슷한 연식)")
             return out
         r = ratio_info.get("신축") or ratio_info.get("전체")
         if r and sale_ref:
@@ -1162,7 +1172,7 @@ def estimate_target(tgt: dict, cands: list[dict], ratio_info: dict, supply_py: f
                              f"비교 전세사례 부족 → 시군구 전세가율 {r['전세가율'] * 100:.0f}%({r['구분']}, {r['기간']}, "
                              f"{r['단지수']}개 단지 단지별 중위) × {basis}")
             return out
-        own = [c["전세공급평단가"] / c["매매공급평단가"] for c in cands[:7]
+        own = [c["전세공급평단가"] / c["매매공급평단가"] for c in cands[:7] if comparable(c)
                if c.get("전세공급평단가") and c.get("매매공급평단가") and 0.2 <= c["전세공급평단가"] / c["매매공급평단가"] <= 1.2]
         if own and sale_ref:
             q = statistics.median(own)
@@ -2298,7 +2308,7 @@ async def market_report(location: str, radius_km: float = 1.5, area_min: float |
                     "전세표시": _fmt_eok(target_jeonse, "예정")})
     # 시세 추정(예정가가 없을 때): 비교사례 → 시군구 전세가율
     est = estimate_target(tgt, (cmp_ or {}).get("후보") or [], (cmp_ or {}).get("시군구전세가율") or {}, t_supply_py,
-                          t_area) if cmp_ else {}
+                          t_area, ty) if cmp_ else {}
     if est.get("전세") and not tgt.get("전세가"):
         e = est["전세"]
         tgt.update({"전세가": e["추정가(만원)"], "전세공급평단가": e["공급평단가"], "전세표시": _fmt_eok(e["추정가(만원)"], "추정"),
